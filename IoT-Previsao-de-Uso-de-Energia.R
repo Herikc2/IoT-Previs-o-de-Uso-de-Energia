@@ -12,7 +12,7 @@
 # públicos do Reliable Prognosis (rp5.ru) e mesclado com os conjuntos de dados 
 # experimentais usando a coluna de data e hora. Duas variáveis aleatórias foram 
 # incluídas no conjunto de dados para testar os modelos de regressão e filtrar os 
-# atributos não preditivos (parâmetros)
+# atributos não preditivos (parâmetros).
 
 
 #############################################################################################
@@ -122,7 +122,7 @@ ggsave("Consumo em Watt-Hora.jpg", width = 10, height = 5)
 setwd(raiz_diretorio)
 
 
-# Relação entre connsumo de energia e temperatura na cozinha - Sem Arredondamento
+# Relação entre consumo de energia e temperatura na cozinha - Sem Arredondamento
 dtTemp <- dtFull %>%
   count(T1, Appliances)
 

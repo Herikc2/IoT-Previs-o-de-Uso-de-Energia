@@ -70,7 +70,7 @@ def main():
     Hour = st.number_input("Hora do Dia", 0, 24, 0)
     Press_mm_hg = st.number_input("Pressão em mm/hg", 720.0, 780.0, 760.0, format = "%.2f")
     T3 = st.number_input("Temperatura na Lavanderia em graus Celsius", 17.0, 30.0, 17.0, format = "%.2f")
-    T8 = st.number_input("Temperatura no Quato dos Adolescente em graus Celsius", 16.0, 28.0, 16.0, format = "%.2f")
+    T8 = st.number_input("Temperatura no Quarto dos Adolescente em graus Celsius", 16.0, 28.0, 16.0, format = "%.2f")
     RH_3 = st.number_input("Umidade Relativa na Lavanderia em %", 28.0, 51.0, 28.0, format = "%.2f")
     
     result = ""

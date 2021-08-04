@@ -22,3 +22,4 @@ Orientações:
 
 - Dentro da pasta docs esta localizado o notebook utilizado durante o projeto, juntamente com a sua versão convertido para .html .
 - Na pasta modelos possui outro readme.md com instruções de como baixar o modelo já treinado, esse não foi inclusi no repositorio devido a sua alta volumetria (mesmo compactado).
+- O script .py na raiz do projeto é uma conversão direta do notebook utilizado, sendo assim é sugerido a utilização do notebook na pasta docs.

@@ -57,6 +57,7 @@ def main():
     # Front End
     html_temp = """ 
     <div style ="background-color: #03e3fc; padding: 15px; margin-bottom: 25px"> 
+    
     <h1 style ="color:#333333;text-align:center;">Previsão de Energia</h1> 
     
     </div> 

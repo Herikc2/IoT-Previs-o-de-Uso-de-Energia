@@ -17,3 +17,9 @@ baixado de um conjunto de dados públicos do Reliable Prognosis (rp5.ru) e mescl
 com os conjuntos de dados experimentais usando a coluna de data e hora. Duas variáveis
 aleatórias foram incluídas no conjunto de dados para testar os modelos de
 regressão e filtrar os atributos não preditivos (parâmetros).
+
+Orientações:
+
+- Dentro da pasta docs esta localizado o notebook utilizado durante o projeto, juntamente com a sua versão convertido para .html .
+- Na pasta modelos possui outro readme.md com instruções de como baixar o modelo já treinado, esse não foi inclusi no repositorio devido a sua alta volumetria (mesmo compactado).
+- O script .py na raiz do projeto é uma conversão direta do notebook utilizado, sendo assim é sugerido a utilização do notebook na pasta docs.

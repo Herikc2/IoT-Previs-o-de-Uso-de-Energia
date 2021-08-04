@@ -21,7 +21,7 @@
 # 
 # -- Objetivos
 # - R^2 superior a 70%
-# - RMSE inferior a 20
+# - RMSE inferior a 25
 # - MAE inferior a 15
 # - Acuracia superior a 80%
 # - Relatar economia total de energia.
@@ -66,12 +66,6 @@
 # In[1]:
 
 
-get_ipython().system('pip install ipywidgets -q')
-
-
-# In[2]:
-
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -81,6 +75,7 @@ import sweetviz as sv
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import shap
+import graphviz
 
 from warnings import simplefilter
 from matplotlib.colors import ListedColormap
@@ -100,10 +95,13 @@ from sklearn.model_selection import train_test_split, RandomizedSearchCV, GridSe
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVR, LinearSVR
 from sklearn.feature_selection import RFE
+from sklearn.tree import export_graphviz
 from catboost import CatBoostRegressor
+from catboost import Pool, cv
+from pickle import dump, load
 
 
-# In[3]:
+# In[2]:
 
 
 # Versões dos pacotes usados neste jupyter notebook
@@ -113,7 +111,7 @@ get_ipython().run_line_magic('watermark', '-a "Herikc Brecher" --iversions')
 
 # ## 2.1 Ambiente
 
-# In[4]:
+# In[3]:
 
 
 simplefilter(action='ignore', category=FutureWarning)
@@ -121,7 +119,7 @@ get_ipython().run_line_magic('matplotlib', 'inline')
 sns.set_theme()
 
 
-# In[5]:
+# In[4]:
 
 
 seed_ = 194
@@ -130,7 +128,7 @@ np.random.seed(seed_)
 
 # # 3. Carregamento dos Dados
 
-# In[6]:
+# In[5]:
 
 
 # Carregamento do dataset de treino e teste
@@ -138,31 +136,31 @@ dtTreino = pd.read_csv('data/training.csv')
 dtTeste = pd.read_csv('data/testing.csv')
 
 
-# In[7]:
+# In[6]:
 
 
 dtTreino.head()
 
 
-# In[8]:
+# In[7]:
 
 
 dtTeste.head()
 
 
-# In[9]:
+# In[8]:
 
 
 dtFull = pd.concat([dtTreino, dtTeste], axis = 0)
 
 
-# In[10]:
+# In[9]:
 
 
 dtFull.head()
 
 
-# In[11]:
+# In[10]:
 
 
 print(dtTreino.shape, dtTeste.shape, dtFull.shape)
@@ -170,7 +168,7 @@ print(dtTreino.shape, dtTeste.shape, dtFull.shape)
 
 # # 4. Analise Exploratoria
 
-# In[12]:
+# In[11]:
 
 
 dtFull.head()
@@ -178,7 +176,7 @@ dtFull.head()
 
 # Possuimos ao todo 19375 observações, unindo o conjunto de treino e teste.
 
-# In[13]:
+# In[12]:
 
 
 dtFull.describe()
@@ -186,13 +184,13 @@ dtFull.describe()
 
 # A unica feature que aparenta estar no formato errado é a coluna 'Date', essa que é 'datetime' foi carregada como 'object'.
 
-# In[14]:
+# In[13]:
 
 
 dtFull.dtypes
 
 
-# In[15]:
+# In[14]:
 
 
 # Copiando para um dataset onde iremos processar os dados
@@ -202,7 +200,7 @@ dtProcessado = dtFull.copy()
 dtProcessado['date'] = pd.to_datetime(dtProcessado['date'], format='%Y-%m-%d %H:%M:%S')
 
 
-# In[16]:
+# In[15]:
 
 
 dtProcessado.dtypes
@@ -210,13 +208,13 @@ dtProcessado.dtypes
 
 # Agora os dados estão no formato correto, e não tivemos perda de informação.
 
-# In[17]:
+# In[16]:
 
 
 dtProcessado.head()
 
 
-# In[18]:
+# In[17]:
 
 
 # Verificando se possui valor missing/NA
@@ -225,14 +223,14 @@ print(dtProcessado.isna().sum())
 
 # Colunas como 'date', 'rv1' e 'rv2' possuem valores unicos para cada observação, sendo 1:1. Iremos verificar depois se essas informações são relevantes para o modelo, pois isso pode causar problemas.
 
-# In[19]:
+# In[18]:
 
 
 # Verificando valores unicos
 print(dtProcessado.nunique())
 
 
-# In[20]:
+# In[19]:
 
 
 # Verificando se possui valores duplicados
@@ -241,20 +239,20 @@ print(sum(dtProcessado.duplicated()))
 
 # Para melhor interpretação dos dados, iremos separa eles em variaveis qualitativas e quantitativas.
 
-# In[21]:
+# In[20]:
 
 
 qualitativas = ['WeekStatus', 'Day_of_week']
 quantitativas = dtProcessado.drop(['WeekStatus', 'Day_of_week', 'date'], axis = 1).columns
 
 
-# In[22]:
+# In[21]:
 
 
 dtProcessado[qualitativas].head()
 
 
-# In[23]:
+# In[22]:
 
 
 dtProcessado[quantitativas].head()
@@ -264,23 +262,26 @@ dtProcessado[quantitativas].head()
 
 # Analisando o grafico abaixo é perceptivel que o consumo de energia nos 'Weekend' são proporcionais aos 'Weekday'. Já que a 'Weekday' representa exatatemente 28.5% de uma semana. Por acaso esse também é o valor do consumo de energia em %.
 
-# In[24]:
+# In[23]:
 
 
 # Consumo de energia entre dias da semana e finais de semana
+fig = plt.figure(figsize = (15, 10))
 plt.pie(dtProcessado.groupby('WeekStatus').sum()['Appliances'], labels = ['Weekday', 'Weekend'], autopct = '%1.1f%%')
+
+plt.savefig('analises/pizza_energia_weekday_weekend.png')
 plt.show()
 
 
 # É perceptivel que ao longo do periodo da coleta dos dados mantemos oscilações comuns no consumo de energia, provavel que se de por eventos climaticos ao longo do periodo.
 
-# In[25]:
+# In[24]:
 
 
 plt.plot(dtProcessado['date'], dtProcessado['Appliances'])
 
 
-# In[26]:
+# In[25]:
 
 
 def scatter_plot_conjunto(data, columns, target):
@@ -302,7 +303,7 @@ def scatter_plot_conjunto(data, columns, target):
 
 # É perceptivel que as variaveis 'T*' como 'T1', 'T2'... possuem baixa correlação com a variavel target. Onde possuimos concentrações maiores para valores médios, porém ao aumentarem ou diminuirem muito passam a diminuir a 'Appliances'. Já variaveis 'RH_*' possuem uma correlação um pouco maior.
 
-# In[27]:
+# In[26]:
 
 
 scatter_plot_conjunto(dtProcessado, quantitativas, 'Appliances')
@@ -312,7 +313,7 @@ scatter_plot_conjunto(dtProcessado, quantitativas, 'Appliances')
 
 # Iremos verificar se os nossos dados possuem uma distribuição Gaussiana ou não. Dessa forma iremos entender quais metodos estatisticos utilizar. Distribuições Gaussianas utilizam de métodos estatisticos paramétricos. Já o contrário utiliza de métodos estatisticos não paramétricos. É importante entender qual método utilizar para não termos uma vissão errada sobre os dados.
 
-# In[28]:
+# In[27]:
 
 
 def quantil_quantil_teste(data, columns):
@@ -325,13 +326,13 @@ def quantil_quantil_teste(data, columns):
 
 # Olhando os graficos abaixo, possuimos algumas variaveis que não seguem a reta Gaussiana, indicando dados não normalizados, porém para termos certeza, iremos trazer isso para uma representação numerica, onde podemos ter uma maior certeza.
 
-# In[29]:
+# In[28]:
 
 
 quantil_quantil_teste(dtProcessado, quantitativas)
 
 
-# In[30]:
+# In[29]:
 
 
 def testes_gaussianos(data, columns, teste):
@@ -375,7 +376,7 @@ def testes_gaussianos(data, columns, teste):
 
 # Aparentemente os nossos dados não seguem o comportamento Gaussiano, dessa forma iremos ter que tomar medidas estatisticas para amenizar o impacto na hora da modelagem preditiva.
 
-# In[31]:
+# In[30]:
 
 
 testes_gaussianos(dtProcessado, quantitativas, teste = 'normal')
@@ -385,7 +386,7 @@ testes_gaussianos(dtProcessado, quantitativas, teste = 'normal')
 # 
 # Sendo alguas delas: 'Appliances', 'T1', 'RH_1', 'Visibility', 'RH_5'. Sendo alguns outliers somente para valores maximos e outros para valores minimos.
 
-# In[32]:
+# In[31]:
 
 
 # Plot para variaveis quantitativas
@@ -402,7 +403,7 @@ for i, col in enumerate(quantitativas):
 # 
 # Um segundo ponto são as variaveis 'rv1' e 'rv2' que possuem correlação 1, de acordo com o nosso dicionario de dados essas variaveis são randomicas, então irão ser removidas do dataset de qualquer maneira. Já o NSM é uma variavel sequencial, que também irá ser removida.
 
-# In[33]:
+# In[32]:
 
 
 fig = plt.figure(figsize = (32, 32))
@@ -415,15 +416,15 @@ plt.show()
 # 
 # Observação: O report foi analisado e anotado insights, porém para melhor compreensão passo a passo dos dados, iremos realizar a analise de forma manual ao longo do notebook.
 
-# In[34]:
+# In[33]:
 
 
 # Gerando relatorio de analise do Sweetviz
-#relatorio = sv.analyze(dtProcessado)
-#relatorio.show_html('docs/eda_report.html')
+relatorio = sv.analyze(dtProcessado)
+relatorio.show_html('docs/eda_report.html')
 
 
-# In[35]:
+# In[34]:
 
 
 # Remoção de variaveis desnecessárias a primeira vista
@@ -434,7 +435,7 @@ quantitativas = quantitativas.drop(['rv1', 'rv2'])
 
 # # 4.4 Avaliando MultiColinearidade
 
-# In[36]:
+# In[35]:
 
 
 dtProcessado_Temp = dtProcessado.copy()
@@ -448,7 +449,7 @@ corr = np.corrcoef(X, rowvar = 0)
 eigenvalues, eigenvectors = np.linalg.eig(corr)
 
 
-# In[37]:
+# In[36]:
 
 
 menor = 999
@@ -459,26 +460,26 @@ for i, val in enumerate(eigenvalues):
         index = i
 
 
-# In[38]:
+# In[37]:
 
 
 print('Menor valor do eigenvalues:', menor, 'Index:', index)
 
 
-# In[39]:
+# In[38]:
 
 
 menorEigenVector = abs(eigenvectors[:, 19])
 
 
-# In[40]:
+# In[39]:
 
 
 for i, val in enumerate(eigenvectors[:, 19]):
     print('Variavel', i,':', abs(val))
 
 
-# In[41]:
+# In[40]:
 
 
 colunas = dtProcessado_Temp.columns
@@ -486,7 +487,7 @@ colunas = dtProcessado_Temp.columns
 
 # Analisando as variaveis de indice 11, 19, 21 e 24, aparentam possuir multicolinearidade devido ao seu alto valor absoluto. Porém a sua correlação é baixa, dessa forma iremos aprofundar mais a analise para tomarmos alguma decisão.
 
-# In[42]:
+# In[41]:
 
 
 colunas[[11, 19, 21, 24]]
@@ -494,7 +495,7 @@ colunas[[11, 19, 21, 24]]
 
 # A variavel 'RH_5' não apresenta um comportamento nitido de correlação com as demais variaveis no scatter_plot. Porém, apresenta uma tendencia pequena de aumento nos valores de 'RH_5' apartir de uma determinada crescente nas variaveis independentes.
 
-# In[43]:
+# In[42]:
 
 
 scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibility'], 'RH_5')
@@ -502,7 +503,7 @@ scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibi
 
 # Para 'RH_9' temos o mesmo detalhe, não apresenta um comportamento nitido de correlação com as demais variaveis no scatter_plot. Porém, apresenta uma tendencia pequena de aumento nos valores de 'RH_9' apartir de uma determinada crescente nas variaveis independentes. 
 
-# In[44]:
+# In[43]:
 
 
 scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibility'], 'RH_9')
@@ -510,7 +511,7 @@ scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibi
 
 # Para 'RH_9' temos o mesmo detalhe, não apresenta um comportamento nitido de correlação com as demais variaveis no scatter_plot.
 
-# In[45]:
+# In[44]:
 
 
 scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibility'], 'Press_mm_hg')
@@ -518,7 +519,7 @@ scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibi
 
 # Para 'Visibility' temos o mesmo detalhe, não apresenta um comportamento nitido de correlação com as demais variaveis no scatter_plot. Porém, apresenta uma tendencia pequena de aumento nos valores de 'Visibility' apartir de uma determinada crescente nas variaveis independentes.
 
-# In[46]:
+# In[45]:
 
 
 scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibility'], 'Visibility')
@@ -528,7 +529,7 @@ scatter_plot_conjunto(dtProcessado_Temp, ['RH_5', 'RH_9', 'Press_mm_hg', 'Visibi
 # 
 # É esperado que valores de VIF = 1 ou proximos a 1 não possua correlação com outras variaveis independentes. Caso VIF ultrapasse valores como 5 ou até 10, possuimos fortes indicios de multicolinearidade entre as variaveis com tal valor.
 
-# In[47]:
+# In[46]:
 
 
 def calcular_VIF(X):
@@ -539,7 +540,7 @@ def calcular_VIF(X):
     return vif
 
 
-# In[48]:
+# In[47]:
 
 
 dtProcessado_Temp = dtProcessado.copy()
@@ -551,7 +552,7 @@ X = dtProcessado_Temp[quantitativas.drop('Appliances')]
 
 # Analisando abaixo é perceptivel que a unica variavel com valor baixo para VIF é 'lights'. Assim iremos necessitar de um grande tratamento sobre as variaveis.
 
-# In[49]:
+# In[48]:
 
 
 calcular_VIF(X)
@@ -559,7 +560,7 @@ calcular_VIF(X)
 
 # Abaixo realizamos a primeira tentativa removendo variaveis com VIF > 2000. Porém ainda possuimos alto indice de MultiColinearidade. Iremos remover variaveis com VIF > 1000.
 
-# In[50]:
+# In[49]:
 
 
 X_temp = X.drop(['T1', 'T2', 'T9', 'Press_mm_hg'], axis = 1)
@@ -568,7 +569,7 @@ calcular_VIF(X_temp)
 
 # Ainda com a remoção de VIF > 1000 estamos com fortes indicios de MultiColinearidade, iremos aumentar o nosso range para VIF > 250.
 
-# In[51]:
+# In[50]:
 
 
 X_temp = X.drop(['T1', 'T2', 'T9', 'Press_mm_hg', 'RH_1', 'RH_3', 'RH_4', 'T7'], axis = 1)
@@ -577,7 +578,7 @@ calcular_VIF(X_temp)
 
 # Após uma remoção massiva de variaveis continuamos com alta taxa de MultiColinearidade, iremos remover mais algumas variaveis. Porém, é esperado que iremos fazer mais testews nas variaveis para verificar seu valor para a predição.
 
-# In[52]:
+# In[51]:
 
 
 X_temp = X.drop(['T1', 'T2', 'T9', 'Press_mm_hg', 'RH_1', 'RH_3', 'RH_4', 'T7', 'T3', 'T4', 'T5', 'T8', 'RH_9', 'RH_2',                'RH_7', 'RH_8'], axis = 1)
@@ -586,7 +587,7 @@ calcular_VIF(X_temp)
 
 # Após removermos 21 variaveis das 25 variaveis quantitativas, conseguimos reduzir o VIF para um valor aceitavel, porém é necessário verificar o impacto dessa remoção e se a tecnica para sua remoção foi utilizada da maneira correta.
 
-# In[53]:
+# In[52]:
 
 
 X_temp = X.drop(['T1', 'T2', 'T9', 'Press_mm_hg', 'RH_1', 'RH_3', 'RH_4', 'T7', 'T3', 'T4', 'T5', 'T8', 'RH_9', 'RH_2',                'RH_7', 'RH_8', 'RH_5', 'T_out', 'Visibility', 'RH_out', 'T6'], axis = 1)
@@ -595,7 +596,7 @@ calcular_VIF(X_temp)
 
 # Iremos verificar o valor das variaveis utilizando tanto o dataset original quanto com as variaveis removidas apartir do calculo de VIF. Para isso iremos utilizar um modelo base de regressão lienar do StatsModels.
 
-# In[54]:
+# In[53]:
 
 
 # Carregando todas variaveis com exceção da 'Target', iremos adicionar a constante exigida pelo modelo
@@ -605,7 +606,7 @@ Xc = sm.add_constant(X)
 y = dtProcessado['Appliances'].values
 
 
-# In[55]:
+# In[54]:
 
 
 # Criando e treinando modelo
@@ -619,7 +620,7 @@ modelo_v1 = modelo.fit()
 # 
 # Possuimos um 'Omnibus' muito alto, visto que o ideal seria 0. Já Skew e Kurtosis possuem valores relativamente normais para dos que não foram tratados. Já o Durbin-Watson está com um valor relativamente proximo do normal (entre 1 e 2), porém esta indicando que os nossos dados podem estar concentrados, a medida que o ponto de dados aumenta o erro relativo aumenta. Por ultimo, estamos com um 'Conditiom Number' extremamente alto, indicando mais ainda a nossa multicolienaridade.
 
-# In[56]:
+# In[55]:
 
 
 # Visualizando resumo do modelo
@@ -628,7 +629,7 @@ modelo_v1.summary()
 
 # Abaixo iremos criar o modelo novamente porém a redução de variaveis implicadas pelo p value e VIF.
 
-# In[57]:
+# In[56]:
 
 
 # Carregando variaveis com exceção
@@ -637,7 +638,7 @@ Xc = sm.add_constant(X_temp)
 y = dtProcessado['Appliances'].values
 
 
-# In[58]:
+# In[57]:
 
 
 # Criando e treinando modelo
@@ -651,7 +652,7 @@ modelo_v2 = modelo.fit()
 # 
 # Iremos ter que avaliar melhor quais variaveis utilizar para o nosso modelo, afim de reduzir a MultiColinearidade sem perder variaveis de valor.
 
-# In[59]:
+# In[58]:
 
 
 # Visualizando resumo do modelo
@@ -674,7 +675,7 @@ modelo_v2.summary()
 
 # Olhando primeiramente para o Skewness, possuimos variaveis com alta simetria o que é muito bom para os algoritmos de Machine Learnign em geral. Porém possuimo a variavel 'lights' com um simetria muito acima de 0. Já as outras variaveis possuem um Skewness aceitavel, valores maiores que 0.5 ou menores que -0.5 indicam que a simetria já começa a se perder, porém ainda é aceitavel.
 
-# In[60]:
+# In[59]:
 
 
 print(dtProcessado[quantitativas].skew(), '\nSoma:', sum(abs(dtProcessado[quantitativas].skew())))
@@ -682,7 +683,7 @@ print(dtProcessado[quantitativas].skew(), '\nSoma:', sum(abs(dtProcessado[quanti
 
 # ### 4.5.2 Histograma
 
-# In[61]:
+# In[60]:
 
 
 def hist_individual(data, columns, width = 10, height = 15):
@@ -704,19 +705,19 @@ def hist_individual(data, columns, width = 10, height = 15):
 
 # Abaixo iremos verificar o histograma das variaveis. Porém para visualizarmos de uma melhor forma iremos separar em grupos de plots abaixo. Fica perceptivel que 'Appliances' e'lights' não possuem simetria, devido a sua alta concentração entre 0 e 10. Porém variaveis como 'T1' e 'T4' possuem alta simetria.
 
-# In[62]:
+# In[61]:
 
 
 hist_individual(dtProcessado, quantitativas[0:9])
 
 
-# In[63]:
+# In[62]:
 
 
 hist_individual(dtProcessado, quantitativas[9:18])
 
 
-# In[64]:
+# In[63]:
 
 
 hist_individual(dtProcessado, quantitativas[18:27])
@@ -734,7 +735,7 @@ hist_individual(dtProcessado, quantitativas[18:27])
 
 # É perceptivel que variaveis como 'Appliances', 'lights' e 'RH_5' claramente estão distantes de uma distribuição normal, porém outras variaveis se aproximam de uma distribuição Gaussiana, com valores maiores que 3 e menores que 4. Também é perceptivel qque possuimos muitas variaveis com o comportamento de uma 'Platykurtic', ou seja valores muito espalhados. 
 
-# In[65]:
+# In[64]:
 
 
 print(dtProcessado[quantitativas].kurtosis(), '\nSoma:', sum(abs(dtProcessado[quantitativas].kurtosis())))
@@ -746,14 +747,14 @@ print(dtProcessado[quantitativas].kurtosis(), '\nSoma:', sum(abs(dtProcessado[qu
 
 # Para realizarmos uma analise eficiente das variaveis temporais, iremos transforma-las, adicionando coluna de 'Month', 'Day', 'Hour', e convertendo coluna 'Day_of_week' e 'WeekStatus' para numericas.
 
-# In[66]:
+# In[65]:
 
 
 # Renomeando coluna WeekStatus para Weekend
 dtProcessado = dtProcessado.rename(columns = {'WeekStatus': 'Weekend'})
 
 
-# In[67]:
+# In[66]:
 
 
 # Dia de semana = 0, final de semana = 1
@@ -763,7 +764,7 @@ dtProcessado['Weekend'] = 0
 dtProcessado.loc[(dtProcessado['Day_of_week'] == 5) | (dtProcessado['Day_of_week'] == 6), 'Weekend'] = 1
 
 
-# In[68]:
+# In[67]:
 
 
 # Criando colunan de Mês, Dia e Hora
@@ -772,7 +773,7 @@ dtProcessado['Day'] = dtProcessado['date'].dt.day
 dtProcessado['Hour'] = dtProcessado['date'].dt.hour
 
 
-# In[69]:
+# In[68]:
 
 
 dtProcessado.head()
@@ -786,7 +787,7 @@ dtProcessado.head()
 # 
 # Claro que o cenario acima é somente uma hipotese, porém representar a realidade de algumas pessoas, para um melhor entendimento poderia ser feito uma pesquisa do estilo de vida do cidadões de onde foi retirado o dataset.
 
-# In[70]:
+# In[69]:
 
 
 fig, ax = plt.subplots(figsize = (10, 5))
@@ -795,10 +796,12 @@ dtProcessado.groupby('Day_of_week').mean()['Appliances'].plot(kind = 'bar')
 ax.set_title('Média de Watt-Hora por Dia')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Dia da Semana')
+
+plt.savefig('analises/barra_dia_semana_media_wh.png')
 plt.plot()
 
 
-# In[71]:
+# In[70]:
 
 
 fig, ax = plt.subplots(figsize = (10, 5))
@@ -807,12 +810,14 @@ dtProcessado.groupby('Day_of_week').sum()['Appliances'].plot(kind = 'bar')
 ax.set_title('Soma de Watt-Hora por Dia')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Dia da Semana')
+
+plt.savefig('analises/barra_dia_semana_soma_wh.png')
 plt.plot()
 
 
 # É analisado que o gasto de hora começa a subir aproximadamente as 6 da manhã até as 11 horas da manhã chegar em um pico de 130 Wh, depois temos uma queda até os 100 Wh e voltamos a subir pro volta das 15 horas da tarde, até chegar ao pico de 180 Wh as 18 horas, apartir desse momento vamos caindo o nivel de energia até chegar abaixo dos 60 Wh as 23 horas.
 
-# In[72]:
+# In[71]:
 
 
 fig, ax = plt.subplots(figsize = (10, 5))
@@ -821,10 +826,12 @@ dtProcessado.groupby('Hour').mean()['Appliances'].plot(kind = 'line')
 ax.set_title('Media de Watt-Hora por Hora')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Hora do Dia')
+
+plt.savefig('analises/linha_hora_media_wh.png')
 plt.plot()
 
 
-# In[73]:
+# In[72]:
 
 
 fig, ax = plt.subplots(figsize = (10, 5))
@@ -833,10 +840,12 @@ dtProcessado.groupby('Hour').sum()['Appliances'].plot(kind = 'line')
 ax.set_title('Soma de Watt-Hora por Hora')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Hora do Dia')
+
+plt.savefig('analises/linha_hora_soma_wh.png')
 plt.plot()
 
 
-# In[74]:
+# In[73]:
 
 
 # Criando copia do data set
@@ -847,13 +856,13 @@ dtProcessado_temporal.index = dtProcessado_temporal['date']
 dtProcessado_temporal = dtProcessado_temporal.drop('date', axis = 1)
 
 
-# In[75]:
+# In[74]:
 
 
 dtProcessado_temporal.head()
 
 
-# In[76]:
+# In[75]:
 
 
 # Calculando media por data
@@ -867,7 +876,7 @@ media_momentanea.index = dtProcessado_Dia.index
 
 # Percebe-se que o gasto de energia vem oscilando bastante entre os meses, porém mantem uma média constante devido ao alto volume de dados. Talvez a coluna 'Mês' e 'Dia' possuam uma representatividade interessante para o modelo.
 
-# In[77]:
+# In[76]:
 
 
 fig, ax = plt.subplots(figsize = (15, 5))
@@ -876,6 +885,7 @@ plt.plot(media_momentanea, label = 'Media de Gasto Energetico')
 plt.legend()
 plt.xticks(rotation = 90)
 
+plt.savefig('analises/linha_media_wh_data.png')
 ax.set_title('Gasto Médio de Energia Diário em Watt-Hora');
 
 
@@ -885,13 +895,13 @@ ax.set_title('Gasto Médio de Energia Diário em Watt-Hora');
 
 # Abaixo iremos remover as colunas que mostraram se sem valor durante a analise exploratoria.
 
-# In[78]:
+# In[77]:
 
 
 dtProcessado = dtProcessado.drop(['date'], axis = 1)
 
 
-# In[79]:
+# In[78]:
 
 
 dtProcessado.head()
@@ -899,7 +909,7 @@ dtProcessado.head()
 
 # ## 5.2 Detectando Outliers
 
-# In[80]:
+# In[79]:
 
 
 def boxplot_individuais(data, columns, width = 15, height = 8):
@@ -924,19 +934,19 @@ def boxplot_individuais(data, columns, width = 15, height = 8):
 # 
 # Para tratar os outliers iremos utilizar a tecnnica de IQR, iremos mover os dados abaixo do limite inferior para o limite inferior, já para o limite superior iremos mover os dados acima do mesmo para o limite superior.
 
-# In[81]:
+# In[80]:
 
 
 boxplot_individuais(dtProcessado, quantitativas[0:9])
 
 
-# In[82]:
+# In[81]:
 
 
 boxplot_individuais(dtProcessado, quantitativas[9:18])
 
 
-# In[83]:
+# In[82]:
 
 
 boxplot_individuais(dtProcessado, quantitativas[18:27])
@@ -944,7 +954,7 @@ boxplot_individuais(dtProcessado, quantitativas[18:27])
 
 # ## 5.3 Tratando Outliers
 
-# In[84]:
+# In[83]:
 
 
 def calcular_limites_IQR(column):
@@ -987,13 +997,13 @@ def aplicar_IQR(data, columns = [], superior = True, inferior = True):
 
 # Dataset antes da aplicação do IQR para correção de outliers.
 
-# In[85]:
+# In[84]:
 
 
 dtProcessado.describe()
 
 
-# In[86]:
+# In[85]:
 
 
 dtProcessado_IQR = dtProcessado.copy()
@@ -1004,7 +1014,7 @@ dtProcessado_IQR = aplicar_IQR(dtProcessado_IQR, columns = dtProcessado_IQR.colu
 # 
 # Observação: Não foi aplicado IQR em 'lights' por uma baixa concentração de outliers, também ocorre que ao aplicar IQR em 'lights', todos os valores são zerados.
 
-# In[87]:
+# In[86]:
 
 
 dtProcessado_IQR.describe()
@@ -1016,7 +1026,7 @@ dtProcessado_IQR.describe()
 
 # Para os algoritmos que iremos utilizar como SVM, XGBoost e Regressão Logística Multilinear a padronização se mostra mais relevante. Como nossas variaveis 
 
-# In[88]:
+# In[87]:
 
 
 # Padronização dos dados
@@ -1025,7 +1035,7 @@ processado_IQR_padronizado = dtProcessado_IQR.copy()
 processado_IQR_padronizado[quantitativas.drop('Appliances')] = scaler.fit_transform(                                                                    dtProcessado_IQR[quantitativas.drop('Appliances')])
 
 
-# In[89]:
+# In[88]:
 
 
 '''
@@ -1038,13 +1048,13 @@ processado_IQR_padronizado[quantitativas] = scaler.fit_transform(dtProcessado_IQ
 
 # Após realizar a padronização dos dados, iremos revisitar algumas metricas como skewness, kurtose e boxplot stats.
 
-# In[90]:
+# In[89]:
 
 
 dtProcessado_IQR_padronizado = pd.DataFrame(processado_IQR_padronizado.copy(), columns = dtProcessado_IQR.columns)
 
 
-# In[91]:
+# In[90]:
 
 
 dtProcessado_IQR_padronizado.head()
@@ -1054,7 +1064,7 @@ dtProcessado_IQR_padronizado.head()
 
 # Verificando novamente o skewness, tivemos um aumento consideravel na simetria dos dados, conseguimos reduzir o nosso Skewness total pela metade, o que deve levar a melhores resultados para os algoritmos. Iremos realizar a analise de suas vantagens posteriormente na aplicação dos algoritmos.
 
-# In[92]:
+# In[91]:
 
 
 print(dtProcessado_IQR_padronizado.skew()[quantitativas],      '\nSoma:', sum(abs(dtProcessado_IQR_padronizado[quantitativas].skew())))
@@ -1062,7 +1072,7 @@ print(dtProcessado_IQR_padronizado.skew()[quantitativas],      '\nSoma:', sum(ab
 
 # Verificando novamente a Kurtosis possuimos uma perspectiva muito melhor, conseguimos ajustar as respectivas kurtosis para proximo de 3, trazendo uma distribuição normal Gaussiana, isso se da pela padronização dos dados. A soma ideal da Kurtosis para as nossas 27 variaveis seria 0, chegamos em um valor bem proximo.
 
-# In[93]:
+# In[92]:
 
 
 print(dtProcessado_IQR_padronizado[quantitativas].kurtosis(),      '\nSoma:', sum(abs(dtProcessado_IQR_padronizado[quantitativas].kurtosis())))
@@ -1070,19 +1080,19 @@ print(dtProcessado_IQR_padronizado[quantitativas].kurtosis(),      '\nSoma:', su
 
 # Percebemos uma melhora significativa no histograma abaixo das variaveis, com exceção de lights que manteve um skewness alto.
 
-# In[94]:
+# In[93]:
 
 
 hist_individual(dtProcessado_IQR_padronizado, quantitativas[0:9])
 
 
-# In[95]:
+# In[94]:
 
 
 hist_individual(dtProcessado_IQR_padronizado, quantitativas[9:18])
 
 
-# In[96]:
+# In[95]:
 
 
 hist_individual(dtProcessado_IQR_padronizado, quantitativas[18:27])
@@ -1092,19 +1102,19 @@ hist_individual(dtProcessado_IQR_padronizado, quantitativas[18:27])
 # 
 # Observação: Não foi aplicado correção de outliers por IQR na variavel 'lights'.
 
-# In[97]:
+# In[96]:
 
 
 boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[0:9])
 
 
-# In[98]:
+# In[97]:
 
 
 boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[9:18])
 
 
-# In[99]:
+# In[98]:
 
 
 boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[18:27])
@@ -1114,7 +1124,7 @@ boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[18:27])
 
 # Aqui iremos acrescentar mais uma variavel no nosso dataset que irá merecer uma analise na etapa de Feature Selection. Iremos acrescentar uma Feature do tipo booleana para os feriados no de coleta dos dados.
 
-# In[100]:
+# In[99]:
 
 
 feriados = []
@@ -1124,7 +1134,7 @@ for data in Belgium(years = [2016]).items():
     feriados.append(data)
 
 
-# In[101]:
+# In[100]:
 
 
 # Converter para dataframe e renomear colunas
@@ -1132,13 +1142,13 @@ dtferiados = pd.DataFrame(feriados)
 dtferiados.columns = ['data', 'feriado']
 
 
-# In[102]:
+# In[101]:
 
 
 dtferiados.head()
 
 
-# In[103]:
+# In[102]:
 
 
 # Criar uma copia do dataset original para recuperar a coluna 'date', desconsiderando horario
@@ -1146,7 +1156,7 @@ dtTemp = dtFull.copy()
 dtTemp['date'] = pd.to_datetime(dtTemp['date'], format='%Y-%m-%d %H:%M:%S').dt.date
 
 
-# In[104]:
+# In[103]:
 
 
 def isHoliday(row):
@@ -1164,14 +1174,14 @@ def isHoliday(row):
     return holiday
 
 
-# In[105]:
+# In[104]:
 
 
 # Preenche a coluna feriados do dataframe temporario
 dtTemp['Holiday'] = dtTemp.apply(isHoliday, axis = 1)
 
 
-# In[106]:
+# In[105]:
 
 
 # Copia a coluna de feriados do dataframe temporario para o novo
@@ -1181,7 +1191,7 @@ dtProcessado_incremento['Holiday'] = dtTemp['Holiday'].copy().values
 
 # Como verificado abaixo criamos uma variavel boolean para os dias que forem feriado, onde pode ocorrer um aumento do consumo de energia. 
 
-# In[107]:
+# In[106]:
 
 
 dtProcessado_incremento.head()
@@ -1189,7 +1199,7 @@ dtProcessado_incremento.head()
 
 # Por ultimo iremos remover a variavel 'lights' por não fazer sentido estar no modelo, visto que a mesma apresenta o consumo de Wh das fontes luz da residencia, assim nos indicando um pouco do consumo de energia.
 
-# In[108]:
+# In[107]:
 
 
 dtFinal = dtProcessado_incremento.drop('lights', axis = 1)
@@ -1201,7 +1211,7 @@ dtFinal = dtProcessado_incremento.drop('lights', axis = 1)
 # 
 # Sobre a regressão Lasso e Ridge, iremos utilizar a Lasso com uma das alternativas para medir a importancia das variaveis. Já a ressão Ridge, iremos utilizar durante a modelagem preditiva para tentar aumentar a importancia das variaveis corretas.
 
-# In[109]:
+# In[108]:
 
 
 dtFinal.columns
@@ -1592,7 +1602,7 @@ avalia_modelo(modelo_sel_fs_v3, x_test, y_test)
 
 # ## 7.1 Definindo Ambiente
 
-# In[110]:
+# In[154]:
 
 
 # Separando em variaveis preditivas e target 
@@ -1601,26 +1611,26 @@ X = dtFinal[['T3', 'RH_3', 'T8', 'Press_mm_hg', 'NSM', 'Hour']]
 y = dtFinal['Appliances'].values
 
 
-# In[111]:
+# In[155]:
 
 
 X.head()
 
 
-# In[112]:
+# In[156]:
 
 
 y
 
 
-# In[113]:
+# In[157]:
 
 
 # Separando em treino e teste
 x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = seed_)
 
 
-# In[114]:
+# In[158]:
 
 
 def reportModeloRegressao(modelo, x_teste, y_teste, x_treino = [], y_treino = [], report_treino = False):  
@@ -1658,10 +1668,10 @@ def reportModeloRegressao(modelo, x_teste, y_teste, x_treino = [], y_treino = []
             print('X_treino e/ou y_treino possuem tamanho 0.')
 
 
-# In[115]:
+# In[159]:
 
 
-def treinaRegressao_GridSearchCV(modelo, params_, x_treino, y_treino, x_teste, y_teste,                        n_jobs = -1, cv = 5, refit = True, scoring = None, salvar_resultados = False,                       report_treino = False):
+def treinaRegressao_GridSearchCV(modelo, params_, x_treino, y_treino, x_teste, y_teste,                        n_jobs = -1, cv = 5, refit = True, scoring = None, salvar_resultados = False,                       report_treino = False, retorna_modelo = False):
     grid = GridSearchCV(modelo, params_, n_jobs = n_jobs, cv = cv, refit = refit, scoring = scoring)
     
     grid.fit(x_treino, y_treino)
@@ -1675,7 +1685,13 @@ def treinaRegressao_GridSearchCV(modelo, params_, x_treino, y_treino, x_teste, y
     if salvar_resultados:
         resultados_df = pd.DataFrame(grid.cv_results_)
         
-        return resultados_df 
+        if retorna_modelo:
+            return resultados_df, modelo_
+        else:
+            resultados_df
+        
+    if retorna_modelo:
+        return modelo_
 
 
 # ## 7.2 SVR
@@ -1765,21 +1781,21 @@ get_ipython().run_cell_magic('time', '', "# Modelo 08\nmodelo_svr_v8 = SVR(max_i
 
 # ### 7.2.2 Executando Melhor Modelo
 
-# In[129]:
+# In[160]:
 
 
-get_ipython().run_cell_magic('time', '', "# Modelo Final\nmodelo_svr_final = SVR(max_iter = -1, cache_size = 1000, kernel = 'rbf', C = 10000, gamma = 0.5) # gamma = 'auto' = 0.166\nmodelo_svr_final.fit(x_train, y_train)\n\nreportModeloRegressao(modelo_svr_final, x_test, y_test, x_train, y_train, True)")
+get_ipython().run_cell_magic('time', '', "# Modelo Final\nmodelo_svr_final = SVR(max_iter = -1, cache_size = 1000, kernel = 'rbf', C = 10000, gamma = 0.5)\nmodelo_svr_final.fit(x_train, y_train)\n\nreportModeloRegressao(modelo_svr_final, x_test, y_test, x_train, y_train, True)")
 
 
 # ### 7.2.3 Avaliando SVR
 
-# In[115]:
+# In[161]:
 
 
 shap.initjs()
 
 
-# In[135]:
+# In[162]:
 
 
 # Construindo shap
@@ -1788,35 +1804,35 @@ explainer = shap.Explainer(modelo_svr_final.predict, x_train)
 shap_values = explainer(x_test[:amostras])
 
 
-# In[149]:
+# In[163]:
 
 
 # Waterfall Predição 0
 shap.plots.waterfall(shap_values[0])
 
 
-# In[152]:
+# In[164]:
 
 
 # Waterfall Predição 10
 shap.plots.waterfall(shap_values[10])
 
 
-# In[155]:
+# In[165]:
 
 
 # Force Predição 0
 shap.plots.force(shap_values[0])
 
 
-# In[156]:
+# In[166]:
 
 
 # Force Predição 10
 shap.plots.force(shap_values[10])
 
 
-# In[188]:
+# In[167]:
 
 
 # Summary Plot
@@ -1998,9 +2014,6 @@ get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    
 get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    # Não foi adicionado a score function 'Cosine', pois essa é a default utilizada no modelo 14\n    'score_function': ['L2', 'NewtonCosine', 'NewtonL2']\n}\n\n# Criação de modelo intenso 15\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
 
 
-# # TO DO
-# - Tuning: feature_weights
-
 # In[118]:
 
 
@@ -2019,16 +2032,379 @@ get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    
 get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.7, 0.9, 1.0] # Default subsample = 0.8\n}\n\n# Criação de modelo intenso 18\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
 
 
-# In[116]:
+# In[117]:
 
 
 get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bayesian', 'Bernoulli', 'No'] # Default para CPU = MVS\n}\n\n# Criação de modelo intenso 19\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
 
 
-# In[ ]:
+# In[118]:
 
 
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [3.0],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli']\n}\n\n# Criação de modelo intenso 20\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
 
+
+# In[120]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [0.8, 1.2, 1.4, 1.6] # Default = 1\n}\n\n# Criação de modelo intenso 21\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
+
+
+# In[121]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [0.9, 1.0, 1.1] # Default = 1\n}\n\n# Criação de modelo intenso 22\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
+
+
+# In[122]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [1.0],\n    'min_data_in_leaf': [3, 6, 9] # Default = 1\n}\n\n# Criação de modelo intenso 22\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
+
+
+# In[117]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [1.0],\n    'min_data_in_leaf': [1, 2] # Default = 1\n}\n\n# Criação de modelo intenso 23\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
+
+
+# In[130]:
+
+
+get_ipython().run_cell_magic('time', '', "\nfeature_weights = [[1, 1, 1, 0.9, 1.1, 1.1], [0.9, 0.95, 1.05, 1, 1.2, 1.1]]\n\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [1.0],\n    'min_data_in_leaf': [1],\n    'feature_weights': feature_weights\n}\n\n# Criação de modelo intenso 24\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 50, od_type = 'Iter', od_wait = 20)\n\ntreinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test, scoring = 'neg_root_mean_squared_error',\\\n                            report_treino = True)")
+
+
+# In[138]:
+
+
+# Separando em variaveis preditivas e target 
+#X = dtFinal[variaveis]
+X = dtFinal[['T3', 'RH_3', 'T8', 'Press_mm_hg', 'NSM', 'Hour']]
+y = dtFinal['Appliances'].values
+
+# Separando em treino e teste
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = seed_)
+
+# Definindo variaveis categoricas
+categorical_features_index = np.where(x_train.dtypes != np.float)[0]
+
+
+# In[144]:
+
+
+get_ipython().run_cell_magic('time', '', "cv_dataset = Pool(data=x_train,\n                  label=y_train,\n                  cat_features=categorical_features_index)\n\nparams = {\n    'depth': 11,\n    'langevin': True,\n    'diffusion_temperature': 10000,\n    'learning_rate': 0.025,\n    'grow_policy': 'Depthwise',\n    'iterations' : 5000,\n    'score_function': 'Cosine',\n    'l2_leaf_reg': 2.5,\n    'subsample': 0.8,\n    'bootstrap_type': 'Bernoulli',\n    'random_strength': 1.0,\n    'min_data_in_leaf': 1,\n    'loss_function': 'RMSE',\n    'loss_function': 'RMSE',\n    'eval_metric': 'RMSE',\n    'random_seed': seed_,\n    'verbose': False,\n    'metric_period': 10,\n    'od_type': 'Iter',\n    'od_wait': 10\n}\n\nscores = cv(cv_dataset,\n            params,\n            fold_count = 5, \n            plot = True,\n            seed = seed_)")
+
+
+# In[137]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': 11,\n    'langevin': True,\n    'diffusion_temperature': 10000,\n    'learning_rate': 0.025,\n    'grow_policy': 'Depthwise',\n    'iterations' : 5000,\n    'score_function': 'Cosine',\n    'l2_leaf_reg': 2.5,\n    'subsample': 0.8,\n    'bootstrap_type': 'Bernoulli',\n    'random_strength': 1.0,\n    'min_data_in_leaf': 1,\n    'loss_function': 'RMSE',\n    'loss_function': 'RMSE',\n    'eval_metric': 'RMSE',\n    'random_seed': seed_,\n    'verbose': False,\n    'metric_period': 1,\n    'od_type': 'Iter',\n    'od_wait': 10\n}\n\n# Criação de modelo 25\nmodelo_cat_v25 = CatBoostRegressor(**params)\n\nmodelo_cat_v25.fit(x_train, y_train,\n               cat_features = categorical_features_index,\n               eval_set = (x_val, y_val),\n               plot = True, verbose = False)\n\nreportModeloRegressao(modelo_cat_v25, x_test, y_test, x_train, y_train, True)")
+
+
+# ### 7.3.3 Conclusão CatBoostRegressor
+
+# Após uma série de intensos treinamento com o algoritmo CatBoostRegressor, foi atingido as seguintes metricas:
+# 
+# - R^2                 : 73.05%
+# - R^2 Ajustado        : 73.12%
+# - Acuracia            : 79.44%
+# - MAE                 : 14.35
+# - MSE                 : 489.44
+# - RMSE                : 22.12
+# 
+# Apesar de um intenso treinamento a acuracia que tinhamos como meta não foi alcançada por 0.56%. Apesar do objetivo não ser atingido, obtivemos metricas excelentes comparadas a outros algoritmos que atuaram no mesmo problema. O modelo final ainda obteve overfitting, apesar disso conseguiu seguir uma boa metrica de teste.  
+
+# ### 7.3.4 Execução Melhor Modelo
+
+# In[168]:
+
+
+get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    'langevin': [True],\n    'diffusion_temperature': [10000],\n    'learning_rate': [0.025],\n    'grow_policy': ['Depthwise'],\n    'iterations' : [5000],\n    'score_function': ['Cosine'],\n    'l2_leaf_reg': [2.5],\n    'subsample': [0.8],\n    'bootstrap_type': ['Bernoulli'],\n    'random_strength': [1.0],\n    'min_data_in_leaf': [1]\n}\n\n# Criação de modelo Final\nmodelo = CatBoostRegressor(loss_function = 'RMSE', eval_metric = 'RMSE', random_seed = seed_,\\\n                           verbose = False, metric_period = 1, od_type = 'Iter', od_wait = 10)\n\nmodelo_cat_final = treinaRegressao_GridSearchCV(modelo, params, x_train, y_train, x_test, y_test,\\\n                                            scoring = 'neg_root_mean_squared_error',\\\n                                            report_treino = True, retorna_modelo = True)")
+
+
+# ### 7.3.5 Salvando Modelo
+
+# In[169]:
+
+
+# Salvando modelo de machine learning em formato Pickle
+pickle_out = open('modelos/modelo_final.pkl', mode = 'wb')
+dump(modelo_cat_final, pickle_out)
+pickle_out.close()
+
+
+# In[170]:
+
+
+# Salvando Scale
+dump(scaler, open('modelos/scaler.pkl', mode = 'wb'))
+
+
+# ### 7.3.6 Avaliando CatBoostRegressor
+
+# In[171]:
+
+
+def dependence_plot_unique(columns, shap_values_, x):
+    for col in columns:
+        shap.dependence_plot(col, shap_values_, x)
+
+
+# In[172]:
+
+
+# Construindo shap
+amostras = 1000
+x_shap = x_train[:amostras]
+y_shap =  y_train[:amostras]
+
+explainer = shap.TreeExplainer(modelo_cat_final)
+shap_values = explainer.shap_values(Pool(x_shap, y_shap))
+
+
+# Abaixo temos o impacto da predição 0 e 13, assim conseguimos ver como o resultado é afetado por cada variavel. 
+
+# In[173]:
+
+
+shap.initjs()
+n = 0
+shap.force_plot(explainer.expected_value, shap_values[n,:], x_shap.iloc[n,:])
+
+
+# In[174]:
+
+
+shap.initjs()
+n = 13
+shap.force_plot(explainer.expected_value, shap_values[n,:], x_shap.iloc[n,:])
+
+
+# Abaixo possuimos a distribiução dos dados e seus respectivos impactos ao longo de n observações, assim conseguimos entender de forma simples o impacto de cada variavel e ainda realizar filtros.
+
+# In[175]:
+
+
+shap.initjs()
+shap.force_plot(explainer.expected_value, shap_values, x_shap)
+
+
+# É perceptivel que variaveis como 'NSM' e 'Hour' possuem um comportamento similar ao consumo de energia por hora, isso se da pois ambas variaveis estão relacionadas a tempo, onde impacta diretamente no consumo de energia.
+
+# In[176]:
+
+
+dependence_plot_unique(x_train.columns, shap_values, x_shap)
+
+
+# É perceptivel que a maioria das variaveis possuem um impacto significativo e uma direção homogenea em relação ao impacto no valor resultante da função f(x) do nosso modelo. Essas tendencia se tornna maior em variaveis como 'NSM', 'Hour', 'T3' e 'T8'. Já em 'Press_mm_hg' se mostra menor em relação as outras.
+
+# In[177]:
+
+
+shap.summary_plot(shap_values,x_shap)
+
+
+# In[178]:
+
+
+modelo_cat_final.plot_tree(
+    tree_idx=0
+)
+
+
+# # 8. Conclusão
+
+# Por ultimo na etapa de conclusão, o CatBoostRegressor conseguiu ter um desempenho formidavel em relação a outros algoritmos como SVM e XGBoost.
+# 
+# Observação: Alguns testes foram realizados em outros notebooks para menor peso do notebook final.
+# 
+# O algoritmo CatBoostRegressor apresentou overfitting, que foi possivel controlar em determinadas etapas, porém com o alto custo computacional gerado a cada modelo, acabou ficando inviavel um maior controle. Ainda assim, conseguimos realizar um aumento nas metricas para o modelo, apresentando metricas relativamente altas.
+# 
+# -- Objetivos
+# 
+# 1. R^2 superior a 70% ✔
+# 2. RMSE inferior a 25 ✔
+# 3. MAE inferior a 15 ✔
+# 4. Acuracia superior a 80%
+# 5. Relatar economia total de energia ✔
+# 
+# Observação: O objetivo numero 5 será coberto no relatório final.
+
+# In[179]:
+
+
+# Calculando Previsões
+pred = modelo_cat_final.predict(x_test)
+
+
+# Analisando abaixo na linha tracejada em vermelho temos o consumo real de energia, já em azul possuimos o consumo estimado pelo modelo. Analisando previamente, percebemos que o modelo consegue diversas vezes capturar com precisão o consumo de energia naquele momento, já para momentos que não captura com exatidão, consegue prever a tendencia correta.
+# 
+# Dessa forma é interessante perceber que o algoritmo possui comportamentos em sua maioria corretos. Ainda iremos observar o valor previsto com o limite inferior e superior.
+
+# In[180]:
+
+
+fig = plt.figure(figsize = (20, 8))
+
+amostras = 50
+plt.plot(y_test[:amostras], label = 'Target', color = 'red', linestyle = '--')
+plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
+plt.title('Consumo de Energia')
+
+plt.legend()
+plt.savefig('analises/linha_real_previsto.png')
+plt.show()
+
+
+# In[181]:
+
+
+# Calculando com intervalo de 95% de confiança
+soma_erro = np.sum((y_test - pred)**2)
+stdev = np.sqrt( 1 / (len(y_test) - 2) * soma_erro)
+
+intervalo = 1.95 * stdev
+lower, upper = pred - intervalo, pred + intervalo
+
+
+# Observando abaixo ainda possuimos o limite inferior em verde e o superior em amarelo. O limite foi calculado uitilizando um intervalo de 95% de confiança. Dessa forma é possível visualizar que as predições em nenhum momento estiveram fora dos limites de confiança. Assim, podemos estimar que o nosso modelo possui valores com confiança acima de 95%.
+
+# In[182]:
+
+
+fig = plt.figure(figsize = (20, 8))
+
+amostras = 50
+plt.plot(y_test[:amostras], label = 'Target', color = 'red', linestyle = '--')
+plt.plot(lower[:amostras],label='Limite Inferior', linestyle='--', color='g')
+plt.plot(upper[:amostras],label='Limite Superior', linestyle='--', color='y')
+plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
+plt.title('Previsão de Energia com Limite Inferior e Superior')
+
+plt.legend()
+plt.savefig('analises/linha_real_previsto_limites.png')
+plt.show()
+
+
+# In[183]:
+
+
+# Somando consumo de energia real e previsto
+soma_energia_real_wh = sum(y_test)
+soma_energia_pred_wh = sum(pred)
+
+# Convertendo de Wh para kWh
+soma_energia_real_kwh = soma_energia_real_wh / 1000
+soma_energia_pred_kwh = soma_energia_pred_wh / 1000
+
+soma_energia_pred = [soma_energia_real_kwh, soma_energia_pred_kwh]
+
+
+# In[184]:
+
+
+# Preco kWh Belgium - Local dos dados coletados
+# Fonte dados atualizados em 01.12.2020: https://www.globalpetrolprices.com/Belgium/
+kwh_casa_eur = 0.265
+kwh_casa_usd = 0.315
+
+
+# In[185]:
+
+
+low = min(soma_energia_pred)
+high = max(soma_energia_pred)
+
+
+# In[186]:
+
+
+def adicionaLabels(x, y):
+    for i in range(len(x)):
+        plt.text(i, round(y[i], 4), round(y[i], 4), ha = 'center')
+
+
+# Abaixo conseguimos perceber que o consumo de energia total previsto foi 0.8 kWh abaixo do consumo real, dessa forma se aproximando muito do valor real, sendo perceptível que o modelo conseguiu prever o consumo de energia considerando os limites inferiores e superiores. Dessa forma podendo gerar economia de energia e maior eficiência na rede elétrica.
+
+# In[187]:
+
+
+# Grafico de barras do consumo previsto x real de energia
+fig = plt.figure(figsize = (13, 8))
+
+plt.bar(['Consumo Real', 'Consumo Previsto'], soma_energia_pred)
+plt.ylabel('kWh')
+plt.title('Consumo de Energia')
+plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
+adicionaLabels(['Consumo Real', 'Consumo Previsto'], soma_energia_pred)
+
+plt.savefig('analises/barra_consumo_real_previsto.png')
+plt.show()
+
+
+# In[188]:
+
+
+# Calculando custo eletrico em EUR
+custo_eletrico_real_eur = soma_energia_real_kwh * kwh_casa_eur
+custo_eletrico_pred_eur = soma_energia_pred_kwh * kwh_casa_eur
+
+custo_eletrico_eur = [custo_eletrico_real_eur, custo_eletrico_pred_eur]
+
+# Calculando limites do eixo y
+low = min(custo_eletrico_eur)
+high = max(custo_eletrico_eur)
+
+
+# Abaixo é perceptivel que o custo eletrico em Euro possui uma diferença de apenas € 0.20, assim chegando a minimizar o custo em relação ao esperado.
+
+# In[189]:
+
+
+# Grafico de barras do consumo previsto x real de energia
+fig = plt.figure(figsize = (13, 8))
+
+plt.bar(['Custo Real', 'Custo Previsto'], custo_eletrico_eur)
+plt.ylabel('EUR')
+plt.title('Custo Eletrico')
+plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
+adicionaLabels(['Custo Real', 'Custo Previsto'], custo_eletrico_eur)
+
+plt.savefig('analises/barra_custo_real_previsto_euro.png')
+plt.show()
+
+
+# In[190]:
+
+
+# Calculando custo eletrico em USD
+custo_eletrico_real_usd = soma_energia_real_kwh * kwh_casa_usd
+custo_eletrico_pred_usd = soma_energia_pred_kwh * kwh_casa_usd
+
+custo_eletrico_usd = [custo_eletrico_real_usd, custo_eletrico_pred_usd]
+
+# Calculando limites do eixo y
+low = min(custo_eletrico_usd)
+high = max(custo_eletrico_usd)
+
+
+# Abaixo é perceptivel que o custo eletrico em Dolar possui uma diferença de apenas $ 0.85, assim chegando a minimizar o custo em relação ao esperado.
+
+# In[191]:
+
+
+# Grafico de barras do consumo previsto x real de energia
+fig = plt.figure(figsize = (13, 8))
+
+plt.bar(['Custo Real', 'Custo Previsto'], custo_eletrico_usd)
+plt.ylabel('USD')
+plt.title('Custo Eletrico')
+plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
+adicionaLabels(['Custo Real', 'Custo Previsto'], custo_eletrico_usd)
+
+plt.savefig('analises/barra_custo_real_previsto_dolar.png')
+plt.show()
 
 
 # In[ ]:

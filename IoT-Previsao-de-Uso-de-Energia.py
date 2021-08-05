@@ -132,8 +132,8 @@ np.random.seed(seed_)
 
 
 # Carregamento do dataset de treino e teste
-dtTreino = pd.read_csv('data/training.csv')
-dtTeste = pd.read_csv('data/testing.csv')
+dtTreino = pd.read_csv('../data/training.csv')
+dtTeste = pd.read_csv('../data/testing.csv')
 
 
 # In[6]:
@@ -269,7 +269,7 @@ dtProcessado[quantitativas].head()
 fig = plt.figure(figsize = (15, 10))
 plt.pie(dtProcessado.groupby('WeekStatus').sum()['Appliances'], labels = ['Weekday', 'Weekend'], autopct = '%1.1f%%')
 
-plt.savefig('analises/pizza_energia_weekday_weekend.png')
+plt.savefig('../analises/pizza_energia_weekday_weekend.png')
 plt.show()
 
 
@@ -421,7 +421,7 @@ plt.show()
 
 # Gerando relatorio de analise do Sweetviz
 relatorio = sv.analyze(dtProcessado)
-relatorio.show_html('docs/eda_report.html')
+relatorio.show_html('eda_report.html')
 
 
 # In[34]:
@@ -797,7 +797,7 @@ ax.set_title('Média de Watt-Hora por Dia')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Dia da Semana')
 
-plt.savefig('analises/barra_dia_semana_media_wh.png')
+plt.savefig('../analises/barra_dia_semana_media_wh.png')
 plt.plot()
 
 
@@ -811,7 +811,7 @@ ax.set_title('Soma de Watt-Hora por Dia')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Dia da Semana')
 
-plt.savefig('analises/barra_dia_semana_soma_wh.png')
+plt.savefig('../analises/barra_dia_semana_soma_wh.png')
 plt.plot()
 
 
@@ -827,7 +827,7 @@ ax.set_title('Media de Watt-Hora por Hora')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Hora do Dia')
 
-plt.savefig('analises/linha_hora_media_wh.png')
+plt.savefig('../analises/linha_hora_media_wh.png')
 plt.plot()
 
 
@@ -841,7 +841,7 @@ ax.set_title('Soma de Watt-Hora por Hora')
 ax.set_ylabel('Watt-Hora')
 ax.set_xlabel('Hora do Dia')
 
-plt.savefig('analises/linha_hora_soma_wh.png')
+plt.savefig('../analises/linha_hora_soma_wh.png')
 plt.plot()
 
 
@@ -885,7 +885,7 @@ plt.plot(media_momentanea, label = 'Media de Gasto Energetico')
 plt.legend()
 plt.xticks(rotation = 90)
 
-plt.savefig('analises/linha_media_wh_data.png')
+plt.savefig('../analises/linha_media_wh_data.png')
 ax.set_title('Gasto Médio de Energia Diário em Watt-Hora');
 
 
@@ -1022,60 +1022,60 @@ dtProcessado_IQR.describe()
 
 # ## 5.4 Feature Scaling
 
-# ### 5.4.1 Aplicando Padronização
+# ### 5.4.1 Aplicando Normalização
 
-# Para os algoritmos que iremos utilizar como SVM, XGBoost e Regressão Logística Multilinear a padronização se mostra mais relevante. Como nossas variaveis 
+# Para os algoritmos que iremos utilizar como SVM, XGBoost e Regressão Logística Multilinear a normalização se mostra mais relevante. Como nossas variaveis 
 
 # In[87]:
 
 
-# Padronização dos dados
+# Normalização dos dados
 scaler = StandardScaler()
-processado_IQR_padronizado = dtProcessado_IQR.copy()
-processado_IQR_padronizado[quantitativas.drop('Appliances')] = scaler.fit_transform(                                                                    dtProcessado_IQR[quantitativas.drop('Appliances')])
+processado_IQR_normalizado = dtProcessado_IQR.copy()
+processado_IQR_normalizado[quantitativas.drop('Appliances')] = scaler.fit_transform(                                                                    dtProcessado_IQR[quantitativas.drop('Appliances')])
 
 
 # In[88]:
 
 
 '''
-# Padronização dos dados
+# Normalização dos dados
 scaler = StandardScaler()
-processado_IQR_padronizado = dtProcessado_IQR.copy()
-processado_IQR_padronizado[quantitativas] = scaler.fit_transform(dtProcessado_IQR[quantitativas])
+processado_IQR_normalizado = dtProcessado_IQR.copy()
+processado_IQR_normalizado[quantitativas] = scaler.fit_transform(dtProcessado_IQR[quantitativas])
 '''
 
 
-# Após realizar a padronização dos dados, iremos revisitar algumas metricas como skewness, kurtose e boxplot stats.
+# Após realizar a normalização dos dados, iremos revisitar algumas metricas como skewness, kurtose e boxplot stats.
 
 # In[89]:
 
 
-dtProcessado_IQR_padronizado = pd.DataFrame(processado_IQR_padronizado.copy(), columns = dtProcessado_IQR.columns)
+dtProcessado_IQR_normalizado = pd.DataFrame(processado_IQR_normalizado.copy(), columns = dtProcessado_IQR.columns)
 
 
 # In[90]:
 
 
-dtProcessado_IQR_padronizado.head()
+dtProcessado_IQR_normalizado.head()
 
 
-# ### 5.4.2 Analisando Dados Pós Padronização
+# ### 5.4.2 Analisando Dados Pós Normalização
 
 # Verificando novamente o skewness, tivemos um aumento consideravel na simetria dos dados, conseguimos reduzir o nosso Skewness total pela metade, o que deve levar a melhores resultados para os algoritmos. Iremos realizar a analise de suas vantagens posteriormente na aplicação dos algoritmos.
 
 # In[91]:
 
 
-print(dtProcessado_IQR_padronizado.skew()[quantitativas],      '\nSoma:', sum(abs(dtProcessado_IQR_padronizado[quantitativas].skew())))
+print(dtProcessado_IQR_normalizado.skew()[quantitativas],      '\nSoma:', sum(abs(dtProcessado_IQR_normalizado[quantitativas].skew())))
 
 
-# Verificando novamente a Kurtosis possuimos uma perspectiva muito melhor, conseguimos ajustar as respectivas kurtosis para proximo de 3, trazendo uma distribuição normal Gaussiana, isso se da pela padronização dos dados. A soma ideal da Kurtosis para as nossas 27 variaveis seria 0, chegamos em um valor bem proximo.
+# Verificando novamente a Kurtosis possuimos uma perspectiva muito melhor, conseguimos ajustar as respectivas kurtosis para proximo de 3, trazendo uma distribuição normal Gaussiana, isso se da pela normalização dos dados. A soma ideal da Kurtosis para as nossas 27 variaveis seria 0, chegamos em um valor bem proximo.
 
 # In[92]:
 
 
-print(dtProcessado_IQR_padronizado[quantitativas].kurtosis(),      '\nSoma:', sum(abs(dtProcessado_IQR_padronizado[quantitativas].kurtosis())))
+print(dtProcessado_IQR_normalizado[quantitativas].kurtosis(),      '\nSoma:', sum(abs(dtProcessado_IQR_normalizado[quantitativas].kurtosis())))
 
 
 # Percebemos uma melhora significativa no histograma abaixo das variaveis, com exceção de lights que manteve um skewness alto.
@@ -1083,19 +1083,19 @@ print(dtProcessado_IQR_padronizado[quantitativas].kurtosis(),      '\nSoma:', su
 # In[93]:
 
 
-hist_individual(dtProcessado_IQR_padronizado, quantitativas[0:9])
+hist_individual(dtProcessado_IQR_normalizado, quantitativas[0:9])
 
 
 # In[94]:
 
 
-hist_individual(dtProcessado_IQR_padronizado, quantitativas[9:18])
+hist_individual(dtProcessado_IQR_normalizado, quantitativas[9:18])
 
 
 # In[95]:
 
 
-hist_individual(dtProcessado_IQR_padronizado, quantitativas[18:27])
+hist_individual(dtProcessado_IQR_normalizado, quantitativas[18:27])
 
 
 # Já em relação aos outliers, com a aplicação de IR e correçõs nas escalas dos dados conseguimos uma redução perceptivel.
@@ -1105,19 +1105,19 @@ hist_individual(dtProcessado_IQR_padronizado, quantitativas[18:27])
 # In[96]:
 
 
-boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[0:9])
+boxplot_individuais(dtProcessado_IQR_normalizado, quantitativas[0:9])
 
 
 # In[97]:
 
 
-boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[9:18])
+boxplot_individuais(dtProcessado_IQR_normalizado, quantitativas[9:18])
 
 
 # In[98]:
 
 
-boxplot_individuais(dtProcessado_IQR_padronizado, quantitativas[18:27])
+boxplot_individuais(dtProcessado_IQR_normalizado, quantitativas[18:27])
 
 
 # ## 5.5 Incremento nas Features
@@ -1185,7 +1185,7 @@ dtTemp['Holiday'] = dtTemp.apply(isHoliday, axis = 1)
 
 
 # Copia a coluna de feriados do dataframe temporario para o novo
-dtProcessado_incremento = dtProcessado_IQR_padronizado.copy()
+dtProcessado_incremento = dtProcessado_IQR_normalizado.copy()
 dtProcessado_incremento['Holiday'] = dtTemp['Holiday'].copy().values
 
 
@@ -2128,7 +2128,7 @@ get_ipython().run_cell_magic('time', '', "\nparams = {\n    'depth': [11],\n    
 
 
 # Salvando modelo de machine learning em formato Pickle
-pickle_out = open('modelos/modelo_final.pkl', mode = 'wb')
+pickle_out = open('../modelos/modelo_final.pkl', mode = 'wb')
 dump(modelo_cat_final, pickle_out)
 pickle_out.close()
 
@@ -2137,7 +2137,7 @@ pickle_out.close()
 
 
 # Salvando Scale
-dump(scaler, open('modelos/scaler.pkl', mode = 'wb'))
+dump(scaler, open('../modelos/scaler.pkl', mode = 'wb'))
 
 
 # ### 7.3.6 Avaliando CatBoostRegressor
@@ -2253,7 +2253,7 @@ plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
 plt.title('Consumo de Energia')
 
 plt.legend()
-plt.savefig('analises/linha_real_previsto.png')
+plt.savefig('../analises/linha_real_previsto.png')
 plt.show()
 
 
@@ -2283,7 +2283,7 @@ plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
 plt.title('Previsão de Energia com Limite Inferior e Superior')
 
 plt.legend()
-plt.savefig('analises/linha_real_previsto_limites.png')
+plt.savefig('../analises/linha_real_previsto_limites.png')
 plt.show()
 
 
@@ -2339,7 +2339,7 @@ plt.title('Consumo de Energia')
 plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
 adicionaLabels(['Consumo Real', 'Consumo Previsto'], soma_energia_pred)
 
-plt.savefig('analises/barra_consumo_real_previsto.png')
+plt.savefig('../analises/barra_consumo_real_previsto.png')
 plt.show()
 
 
@@ -2371,7 +2371,7 @@ plt.title('Custo Eletrico')
 plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
 adicionaLabels(['Custo Real', 'Custo Previsto'], custo_eletrico_eur)
 
-plt.savefig('analises/barra_custo_real_previsto_euro.png')
+plt.savefig('../analises/barra_custo_real_previsto_euro.png')
 plt.show()
 
 
@@ -2403,7 +2403,7 @@ plt.title('Custo Eletrico')
 plt.ylim([ceil(low-0.5*(high-low)) - 1, ceil(high+0.5*(high-low)) + 1])
 adicionaLabels(['Custo Real', 'Custo Previsto'], custo_eletrico_usd)
 
-plt.savefig('analises/barra_custo_real_previsto_dolar.png')
+plt.savefig('../analises/barra_custo_real_previsto_dolar.png')
 plt.show()
 
 

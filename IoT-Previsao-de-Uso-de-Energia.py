@@ -1602,7 +1602,7 @@ avalia_modelo(modelo_sel_fs_v3, x_test, y_test)
 
 # ## 7.1 Definindo Ambiente
 
-# In[154]:
+# In[109]:
 
 
 # Separando em variaveis preditivas e target 
@@ -1611,26 +1611,26 @@ X = dtFinal[['T3', 'RH_3', 'T8', 'Press_mm_hg', 'NSM', 'Hour']]
 y = dtFinal['Appliances'].values
 
 
-# In[155]:
+# In[110]:
 
 
 X.head()
 
 
-# In[156]:
+# In[111]:
 
 
 y
 
 
-# In[157]:
+# In[112]:
 
 
 # Separando em treino e teste
 x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = seed_)
 
 
-# In[158]:
+# In[113]:
 
 
 def reportModeloRegressao(modelo, x_teste, y_teste, x_treino = [], y_treino = [], report_treino = False):  
@@ -1668,7 +1668,7 @@ def reportModeloRegressao(modelo, x_teste, y_teste, x_treino = [], y_treino = []
             print('X_treino e/ou y_treino possuem tamanho 0.')
 
 
-# In[159]:
+# In[114]:
 
 
 def treinaRegressao_GridSearchCV(modelo, params_, x_treino, y_treino, x_teste, y_teste,                        n_jobs = -1, cv = 5, refit = True, scoring = None, salvar_resultados = False,                       report_treino = False, retorna_modelo = False):
@@ -2140,6 +2140,14 @@ pickle_out.close()
 dump(scaler, open('../modelos/scaler.pkl', mode = 'wb'))
 
 
+# In[116]:
+
+
+# Carregando modelo
+with open('../modelos/modelo_final.pkl', 'rb') as f:
+    modelo_cat_final = load(f)
+
+
 # ### 7.3.6 Avaliando CatBoostRegressor
 
 # In[171]:
@@ -2231,7 +2239,7 @@ modelo_cat_final.plot_tree(
 # 
 # Observação: O objetivo numero 5 será coberto no relatório final.
 
-# In[179]:
+# In[117]:
 
 
 # Calculando Previsões
@@ -2242,7 +2250,7 @@ pred = modelo_cat_final.predict(x_test)
 # 
 # Dessa forma é interessante perceber que o algoritmo possui comportamentos em sua maioria corretos. Ainda iremos observar o valor previsto com o limite inferior e superior.
 
-# In[180]:
+# In[118]:
 
 
 fig = plt.figure(figsize = (20, 8))
@@ -2251,13 +2259,15 @@ amostras = 50
 plt.plot(y_test[:amostras], label = 'Target', color = 'red', linestyle = '--')
 plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
 plt.title('Consumo de Energia')
+plt.xlabel('Observações')
+plt.ylabel('Wh')
 
 plt.legend()
 plt.savefig('../analises/linha_real_previsto.png')
 plt.show()
 
 
-# In[181]:
+# In[120]:
 
 
 # Calculando com intervalo de 95% de confiança
@@ -2270,7 +2280,7 @@ lower, upper = pred - intervalo, pred + intervalo
 
 # Observando abaixo ainda possuimos o limite inferior em verde e o superior em amarelo. O limite foi calculado uitilizando um intervalo de 95% de confiança. Dessa forma é possível visualizar que as predições em nenhum momento estiveram fora dos limites de confiança. Assim, podemos estimar que o nosso modelo possui valores com confiança acima de 95%.
 
-# In[182]:
+# In[121]:
 
 
 fig = plt.figure(figsize = (20, 8))
@@ -2281,13 +2291,15 @@ plt.plot(lower[:amostras],label='Limite Inferior', linestyle='--', color='g')
 plt.plot(upper[:amostras],label='Limite Superior', linestyle='--', color='y')
 plt.plot(pred[:amostras], label = 'CatBoost', color = 'blue')
 plt.title('Previsão de Energia com Limite Inferior e Superior')
+plt.xlabel('Observações')
+plt.ylabel('Wh')
 
 plt.legend()
 plt.savefig('../analises/linha_real_previsto_limites.png')
 plt.show()
 
 
-# In[183]:
+# In[122]:
 
 
 # Somando consumo de energia real e previsto
@@ -2301,7 +2313,7 @@ soma_energia_pred_kwh = soma_energia_pred_wh / 1000
 soma_energia_pred = [soma_energia_real_kwh, soma_energia_pred_kwh]
 
 
-# In[184]:
+# In[123]:
 
 
 # Preco kWh Belgium - Local dos dados coletados
@@ -2310,14 +2322,14 @@ kwh_casa_eur = 0.265
 kwh_casa_usd = 0.315
 
 
-# In[185]:
+# In[124]:
 
 
 low = min(soma_energia_pred)
 high = max(soma_energia_pred)
 
 
-# In[186]:
+# In[125]:
 
 
 def adicionaLabels(x, y):
@@ -2327,7 +2339,7 @@ def adicionaLabels(x, y):
 
 # Abaixo conseguimos perceber que o consumo de energia total previsto foi 0.8 kWh abaixo do consumo real, dessa forma se aproximando muito do valor real, sendo perceptível que o modelo conseguiu prever o consumo de energia considerando os limites inferiores e superiores. Dessa forma podendo gerar economia de energia e maior eficiência na rede elétrica.
 
-# In[187]:
+# In[126]:
 
 
 # Grafico de barras do consumo previsto x real de energia

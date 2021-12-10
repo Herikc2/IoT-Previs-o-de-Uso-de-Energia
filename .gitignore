@@ -2,3 +2,7 @@ docs/.ipynb_checkpoints
 modelos/modelo_final.*
 app/modelo_iot_energia.pkl
 docs/*.docx
+*.zip
+*.pem
+app/*.zip
+api/*.pkl

@@ -7,6 +7,8 @@
 from pickle import load
 import streamlit as st
 import pandas as pd
+import sqlite3
+from datetime import date
 
 
 # Carregando modelo
@@ -18,6 +20,10 @@ pickle_model.close()
 pickle_scale = open('scaler.pkl', 'rb')
 scaler = load(pickle_scale)
 pickle_scale.close()
+
+# Conectando ao banco de dados sqlite
+banco = sqlite3.connect('../database/banco.db')
+cursor = banco.cursor()
 
 st.cache()
 
@@ -52,6 +58,36 @@ def prediction(NSM, Hour, Press_mm_hg, T3, T8, RH_3):
     return pred
 
 
+# -----------------------
+'''
+import sqlite3
+from random import randrange, uniform
+
+banco = sqlite3.connect('../database/banco.db')
+
+cursor = banco.cursor()
+
+data_l = ['01/12/2021', '02/12/2021', '03/12/2021', '04/12/2021', '05/12/2021', '06/12/2021', '07/12/2021', '08/12/2021', '09/12/2021', '10/12/2021', '11/12/2021', '12/12/2021', '13/12/2021', '14/12/2021', '15/12/2021', '16/12/2021', '17/12/2021', '18/12/2021', '19/12/2021', '20/12/2021', '21/12/2021', '22/12/2021', '23/12/2021', '24/12/2021', '25/12/2021', '26/12/2021', '27/12/2021', '28/12/2021', '29/12/2021', '30/12/2021']
+
+n = 1000
+
+for i in range(0, n):
+    data = data_l[randrange(0, 30)]
+    Hour = randrange(0, 24)
+    Press_mm_hg = uniform(720, 780)
+    T3 = uniform(17, 30)
+    RH_3 = uniform(28, 51)  
+    
+    NSM = (24 - Hour) * 60 * 60
+    T8 = T3 + 0.25
+    
+    result = prediction(NSM, Hour, Press_mm_hg, T3, T8, RH_3)
+
+    cursor.execute("INSERT INTO previsao_energia VALUES ('" + str(data) + "', '" + str(Hour) + "', '" + str(Press_mm_hg) + "', '" + str(T3) + "', '" + str(RH_3) + "', '" + str(round(result[0], 2)) + "')")    
+    banco.commit()   
+'''
+# -----------------------
+
 
 def main():       
     # Front End
@@ -67,20 +103,27 @@ def main():
     st.markdown(html_temp, unsafe_allow_html = True) 
       
     # Inputs para o prediction
-    NSM = st.number_input("Segundos até a meia noite", 0, 86400, 0) 
-    Hour = st.number_input("Hora do Dia", 0, 24, 0)
+    #NSM = st.number_input("Segundos até a meia noite", 0, 86400, 0) 
+    Hour = st.number_input("Hora do Dia", 0, 23, 0)
     Press_mm_hg = st.number_input("Pressão em mm/hg", 720.0, 780.0, 760.0, format = "%.2f")
-    T3 = st.number_input("Temperatura na Lavanderia em graus Celsius", 17.0, 30.0, 17.0, format = "%.2f")
-    T8 = st.number_input("Temperatura no Quarto dos Adolescente em graus Celsius", 16.0, 28.0, 16.0, format = "%.2f")
-    RH_3 = st.number_input("Umidade Relativa na Lavanderia em %", 28.0, 51.0, 28.0, format = "%.2f")
+    T3 = st.number_input("Temperatura Interna da Casa", 17.0, 30.0, 17.0, format = "%.2f")
+    #T8 = st.number_input("Temperatura no Quarto dos Adolescente em graus Celsius", 16.0, 28.0, 16.0, format = "%.2f")
+    RH_3 = st.number_input("Umidade Relativa Interna da Casa em %", 28.0, 51.0, 28.0, format = "%.2f")
+    
+    NSM = (24 - Hour) * 60 * 60
+    T8 = T3 + 0.25
     
     result = ""
       
     # Executar preditor
     if st.button("Predict"): 
         result = prediction(NSM, Hour, Press_mm_hg, T3, T8, RH_3)
-        msg = 'Consumo de energia igual a: ' + str(round(result[0], 2)) + 'Wh'
+        msg = 'O consumo de energia as ' + str(Hour) + ' hora(s) é: ' + str(round(result[0], 2)) + 'Wh'
         st.success(msg)
+        
+        data = date.today().strftime("%d/%m/%Y")
+        cursor.execute("INSERT INTO previsao_energia VALUES ('" + str(data) + "', '" + str(Hour) + "', '" + str(Press_mm_hg) + "', '" + str(T3) + "', '" + str(RH_3) + "', '" + str(round(result[0], 2)) + "')")    
+        banco.commit()    
      
 if __name__=='__main__': 
     main()
